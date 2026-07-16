@@ -1,0 +1,82 @@
+[
+  {
+    "id": 1,
+    "language": "quechua",
+    "question": "¿Cómo se dice 'Hola' en Quechua?",
+    "options": ["Allin p'unchay", "Allianllachu", "Sulpayki", "Tupananchiskama"],
+    "answerIndex": 1,
+    "explanation": "'Allianllachu' es el saludo general en Quechua, equivalente a '¿Estás bien?' u 'Hola'. 'Allin p'unchay' es Buenos días."
+  },
+  {
+    "id": 2,
+    "language": "quechua",
+    "question": "¿Qué elemento de la naturaleza significa 'Inti'?",
+    "options": ["La Luna", "La Tierra", "El Sol", "El Agua"],
+    "answerIndex": 2,
+    "explanation": "'Inti' representa al Sol, una de las deidades más importantes de la cultura incaica."
+  },
+  {
+    "id": 3,
+    "language": "quechua",
+    "question": "Si 'chunka' significa diez e 'iskay' significa dos, ¿cómo se diría doce (diez con dos)?",
+    "options": ["Chunka iskayniyoq", "Iskay chunka", "Iskay chunkayoq", "Huk chunka iskay"],
+    "answerIndex": 0,
+    "explanation": "En quechua, las decenas se forman con 'chunka' seguido del número y el sufijo '-niyoq' o '-yoq' para indicar adición. Doce es 'Chunka iskayniyoq'."
+  },
+  {
+    "id": 4,
+    "language": "quechua",
+    "question": "¿Qué significa la palabra 'Wasi' en Quechua?",
+    "options": ["Amigo", "Trabajo", "Montaña", "Casa"],
+    "answerIndex": 3,
+    "explanation": "'Wasi' significa casa u hogar. Por ejemplo, 'Yachaywasi' significa casa del saber o escuela."
+  },
+  {
+    "id": 5,
+    "language": "quechua",
+    "question": "¿Cuál es el significado de 'Tupananchiskama'?",
+    "options": ["Muchas gracias", "Hasta el próximo encuentro / Adiós", "Buenas noches", "Por favor"],
+    "answerIndex": 1,
+    "explanation": "'Tupananchiskama' se traduce literalmente como 'Hasta que nos volvamos a encontrar', y es la forma tradicional de decir adiós."
+  },
+  {
+    "id": 6,
+    "language": "aymara",
+    "question": "¿Cómo se saluda diciendo 'Buenos días' en Aymara?",
+    "options": ["Kamisaraki", "Waliki", "Askichuruka", "Askijayp'u"],
+    "answerIndex": 2,
+    "explanation": "'Askichuruka' es 'Buenos días' en Aymara. 'Kamisaraki' significa '¿Cómo estás?'."
+  },
+  {
+    "id": 7,
+    "language": "aymara",
+    "question": "¿Qué elemento natural significa la palabra 'Uma' en Aymara?",
+    "options": ["Fuego", "Tierra", "Agua", "Viento"],
+    "answerIndex": 2,
+    "explanation": "'Uma' significa agua en Aymara (muy similar a 'yaku' en Quechua)."
+  },
+  {
+    "id": 8,
+    "language": "aymara",
+    "question": "¿Cómo se dice 'Gracias' en el idioma Aymara?",
+    "options": ["Jisa", "Yuspajara", "Jikisiñkama", "Kamisaki"],
+    "answerIndex": 1,
+    "explanation": "'Yuspajara' significa 'Gracias' en Aymara, adaptado históricamente de 'Dios se lo pague'."
+  },
+  {
+    "id": 9,
+    "language": "aymara",
+    "question": "¿Qué significa el número 'Maya' en Aymara?",
+    "options": ["Uno", "Dos", "Cinco", "Diez"],
+    "answerIndex": 0,
+    "explanation": "'Maya' (o 'Mä') representa el número uno en la lengua Aymara."
+  },
+  {
+    "id": 10,
+    "language": "aymara",
+    "question": "En Aymara, si quieres referirte a tu madre, ¿qué palabra usarías?",
+    "options": ["Auki", "Jila", "Kullaka", "Tayka"],
+    "answerIndex": 3,
+    "explanation": "'Tayka' significa madre en Aymara. 'Auki' es padre y 'Kullaka' es hermana."
+  }
+]
