@@ -21,9 +21,10 @@ if not URI_CONEXION_MONGO:
         "no está definida en el archivo .env. Configura tu clúster de MongoDB Atlas."
     )
 
-# --- CONFIGURACIÓN DE INTELIGENCIA ARTIFICIAL (OPENAI) ---
 # Clave de API opcional para habilitar el motor de traducción avanzado
 CLAVE_API_OPENAI = os.getenv("OPENAI_API_KEY")
+if CLAVE_API_OPENAI:
+    CLAVE_API_OPENAI = CLAVE_API_OPENAI.strip().strip('"').strip("'")
 
 # --- LÍMITES Y PARÁMETROS GLOBALES (OPTIMIZACIÓN GRANDES DATOS) ---
 # Cantidad máxima predeterminada de registros por página en consultas de historial
