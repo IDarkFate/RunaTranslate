@@ -9,21 +9,18 @@ import services.cache_service as cs
 from services.education_service import generar_trivia_desde_feedback
 
 # --- CLIENTE DE INTELIGENCIA ARTIFICIAL (OPENAI / GEMINI COMPATIBLE) ---
+USAR_GEMINI_DIRECTO = False
 cliente_openai = None
 MODELO_IA = "gpt-4o-mini"
 
 if CLAVE_API_OPENAI:
     try:
-        from openai import OpenAI
         # Detectar si la clave pertenece a la API de Google Gemini (AI Studio o similar)
         if CLAVE_API_OPENAI.startswith("AQ.") or CLAVE_API_OPENAI.startswith("AIza"):
-            cliente_openai = OpenAI(
-                api_key=CLAVE_API_OPENAI,
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-            )
-            MODELO_IA = "gemini-1.5-flash"
-            print(">>> Servicio de traducción: Cliente Gemini (compatible con OpenAI) inicializado con éxito.")
+            USAR_GEMINI_DIRECTO = True
+            print(">>> Servicio de traducción: Motor nativo Gemini configurado (100% compatible con claves AQ).")
         else:
+            from openai import OpenAI
             cliente_openai = OpenAI(api_key=CLAVE_API_OPENAI)
             MODELO_IA = "gpt-4o-mini"
             print(">>> Servicio de traducción: Cliente OpenAI inicializado para traducción contextual.")
@@ -157,7 +154,7 @@ def traducir_con_openai(texto, idioma_origen, idioma_destino):
     Realiza la traducción del texto llamando a la API de OpenAI / Gemini.
     Si idioma_origen es 'auto', detecta el idioma y devuelve un JSON.
     """
-    if not cliente_openai:
+    if not cliente_openai and not USAR_GEMINI_DIRECTO:
         return None
         
     nombres_idiomas = {
@@ -206,6 +203,95 @@ Reglas de Oro:
 Idioma destino: {destino_nombre}
 Texto: "{texto}" """
 
+    # --- FLUJO NATIVO GEMINI (DIRECTO POR HTTP) ---
+    if USAR_GEMINI_DIRECTO:
+        import urllib.request
+        import urllib.parse
+        import json
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={CLAVE_API_OPENAI}"
+        headers = {"Content-Type": "application/json"}
+        
+        payload = {
+            "systemInstruction": {
+                "parts": [{"text": system_content}]
+            },
+            "contents": [
+                {
+                    "parts": [{"text": user_content}]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 500
+            }
+        }
+        
+        if idioma_origen == "auto":
+            payload["generationConfig"]["responseMimeType"] = "application/json"
+            
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers=headers,
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=5.0) as response:
+                res_data = json.loads(response.read().decode("utf-8"))
+                
+                try:
+                    contenido = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                except (KeyError, IndexError):
+                    print(f"Estructura de respuesta inesperada en Gemini API: {res_data}")
+                    return None
+                    
+                if idioma_origen == "auto":
+                    if contenido.startswith("```"):
+                        lineas = contenido.split("\n")
+                        if lineas[0].startswith("```"):
+                            lineas = lineas[1:]
+                        if lineas and lineas[-1].strip() == "```":
+                            lineas = lineas[:-1]
+                        contenido = "\n".join(lineas).strip()
+                        
+                    try:
+                        datos = json.loads(contenido)
+                    except Exception:
+                        import re
+                        detected_match = re.search(r'"detected_lang"\s*:\s*"([^"]+)"', contenido)
+                        translated_match = re.search(r'"translated_text"\s*:\s*"([^"]+)"', contenido)
+                        if detected_match and translated_match:
+                            datos = {
+                                "detected_lang": detected_match.group(1),
+                                "translated_text": translated_match.group(1)
+                            }
+                        else:
+                            raise ValueError("JSON no parseable en Gemini directo")
+                            
+                    detected = datos.get("detected_lang", "es").strip().lower()
+                    if detected not in ["es", "qu", "ay"]:
+                        detected = "es"
+                    translated = datos.get("translated_text", "").strip()
+                    
+                    return {
+                        "translated_text": translated,
+                        "detected_lang": detected,
+                        "engine": "Traducción por IA nativa (gemini-1.5-flash)"
+                    }
+                else:
+                    if contenido.startswith('"') and contenido.endswith('"'):
+                        contenido = contenido[1:-1]
+                    return {
+                        "translated_text": contenido.strip(),
+                        "detected_lang": idioma_origen,
+                        "engine": "Traducción por IA nativa (gemini-1.5-flash)"
+                    }
+        except Exception as error:
+            print(f"Error en Gemini API Nativa: {error}")
+            return None
+
+    # --- FLUJO OPENAI SDK ---
     try:
         if idioma_origen == "auto":
             respuesta = cliente_openai.chat.completions.create(
@@ -425,7 +511,7 @@ def traducir(texto, idioma_origen, idioma_destino):
 
     # --- 1. SI ES AUTO-DETECCIÓN, ATACAR DIRECTAMENTE CON LA IA SI ESTÁ ACTIVA ---
     if idioma_origen == "auto":
-        if cliente_openai:
+        if cliente_openai or USAR_GEMINI_DIRECTO:
             res_ia = traducir_con_openai(texto, "auto", idioma_destino)
             if res_ia:
                 es_valida, texto_saneado = validar_y_sanear_traduccion(texto, res_ia["translated_text"])
@@ -459,7 +545,7 @@ def traducir(texto, idioma_origen, idioma_destino):
         return resultado_cache["translated_text"], resultado_cache["explanation"], resultado_cache["engine"], idioma_origen
 
     # 2.2. Intentar traducción con IA Avanzada (OpenAI / Gemini)
-    if cliente_openai:
+    if cliente_openai or USAR_GEMINI_DIRECTO:
         res_ia = traducir_con_openai(texto, idioma_origen, idioma_destino)
         if res_ia:
             es_valida, texto_saneado = validar_y_sanear_traduccion(texto, res_ia["translated_text"])
