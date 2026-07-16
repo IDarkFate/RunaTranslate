@@ -21,7 +21,7 @@ if CLAVE_API_OPENAI:
                 api_key=CLAVE_API_OPENAI,
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
             )
-            MODELO_IA = "gemini-flash-latest"
+            MODELO_IA = "gemini-1.5-flash"
             print(">>> Servicio de traducción: Cliente Gemini (compatible con OpenAI) inicializado con éxito.")
         else:
             cliente_openai = OpenAI(api_key=CLAVE_API_OPENAI)
