@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, MessageSquareCode, Award, Database, 
   RefreshCw, MessageSquare, AlertCircle, Languages,
-  LogOut, ChevronLeft, ChevronRight, PlusCircle, Trash2, UserPlus, Trophy
+  LogOut, ChevronLeft, ChevronRight, PlusCircle, Trash2, UserPlus, Trophy,
+  Search, Edit3
 } from 'lucide-react';
 import { 
   PieChart, Pie, Cell, BarChart, Bar, 
@@ -12,6 +13,7 @@ import { apiRequest, eliminarTokenAdmin } from '../utils/api';
 import Card from './ui/Card';
 import Badge from './ui/Badge';
 import Button from './ui/Button';
+import AlertModal from './ui/AlertModal';
 
 export default function AdminDashboard({ onLogout, showToast }) {
   // Pestañas internas del Admin: 'analytics' | 'trivia' | 'admins'
@@ -48,6 +50,43 @@ export default function AdminDashboard({ onLogout, showToast }) {
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminPin, setNewAdminPin] = useState('');
 
+  // --- ESTADOS DE MODAL DE ALERTA PERSONALIZADO ---
+  const [modalState, setModalState] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
+  const triggerConfirm = (title, message, callback) => {
+    setModalState({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: () => {
+        callback();
+        setModalState(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
+
+  // --- ESTADOS DE LA GESTIÓN DE DICCIONARIO ---
+  const [dictionaryTerms, setDictionaryTerms] = useState([]);
+  const [dictSearch, setDictSearch] = useState('');
+  const [dictLang, setDictLang] = useState('quechua'); // 'quechua' | 'aymara'
+  const [dictPage, setDictPage] = useState(1);
+  const [dictTotal, setDictTotal] = useState(0);
+  const dictLimite = 8;
+  const [dictLoading, setDictLoading] = useState(false);
+
+  // Estados para Formulario de Edición/Creación de Término
+  const [showTermModal, setShowTermModal] = useState(false);
+  const [editingTermId, setEditingTermId] = useState(null); // null para Crear, string para Editar
+  const [termEs, setTermEs] = useState('');
+  const [termNative, setTermNative] = useState('');
+  const [termCategory, setTermCategory] = useState('general');
+  const [termType, setTermType] = useState('palabra');
+
   const fetchAdminData = async () => {
     setLoading(true);
     try {
@@ -78,13 +117,32 @@ export default function AdminDashboard({ onLogout, showToast }) {
     }
   };
 
+  const fetchDictionaryTerms = async () => {
+    setDictLoading(true);
+    try {
+      const salto = (dictPage - 1) * dictLimite;
+      const res = await apiRequest(`/api/admin/dictionary?search=${encodeURIComponent(dictSearch)}&lang=${dictLang}&limite=${dictLimite}&salto=${salto}`);
+      if (res.success) {
+        setDictionaryTerms(res.terms);
+        setDictTotal(res.total);
+      }
+    } catch (e) {
+      console.error(e);
+      showToast('Error al cargar términos del diccionario.', 'error');
+    } finally {
+      setDictLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeSubTab === 'analytics') {
       fetchAdminData();
     } else if (activeSubTab === 'trivia') {
       fetchQuizzes();
+    } else if (activeSubTab === 'dictionary') {
+      fetchDictionaryTerms();
     }
-  }, [feedbackPage, activeSubTab]);
+  }, [feedbackPage, activeSubTab, dictPage, dictLang, dictSearch]);
 
   const handleCerrarSesion = () => {
     eliminarTokenAdmin();
@@ -126,15 +184,103 @@ export default function AdminDashboard({ onLogout, showToast }) {
   };
 
   // --- HANDLER DE BORRAR TRIVIA ---
-  const handleDeleteQuiz = async (id) => {
-    if (!window.confirm('¿Estás seguro de que deseas eliminar esta pregunta de trivia?')) return;
-    try {
-      await apiRequest(`/api/admin/quizzes/${id}`, { method: 'DELETE' });
-      showToast('Pregunta de trivia eliminada exitosamente.', 'success');
-      fetchQuizzes();
-    } catch (e) {
-      showToast(e.message || 'Error al eliminar la pregunta.', 'error');
+  const handleDeleteQuiz = (id) => {
+    triggerConfirm(
+      'Eliminar Pregunta',
+      '¿Estás seguro de que deseas eliminar esta pregunta de trivia?',
+      async () => {
+        try {
+          await apiRequest(`/api/admin/quizzes/${id}`, { method: 'DELETE' });
+          showToast('Pregunta de trivia eliminada exitosamente.', 'success');
+          fetchQuizzes();
+        } catch (e) {
+          showToast(e.message || 'Error al eliminar la pregunta.', 'error');
+        }
+      }
+    );
+  };
+
+  // --- HANDLER DE GUARDAR TÉRMINO ---
+  const handleSaveTerm = async (e) => {
+    e.preventDefault();
+    if (!termEs.trim() || !termNative.trim() || !termCategory.trim() || !termType.trim()) {
+      showToast('Por favor, completa todos los campos del término.', 'error');
+      return;
     }
+
+    try {
+      const payload = {
+        es: termEs.trim(),
+        native: termNative.trim(),
+        category: termCategory.trim(),
+        type: termType.trim(),
+        language: dictLang
+      };
+
+      if (editingTermId) {
+        // Actualizar
+        await apiRequest(`/api/admin/dictionary/${editingTermId}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload)
+        });
+        showToast('Término de glosario actualizado con éxito.', 'success');
+      } else {
+        // Crear
+        await apiRequest('/api/admin/dictionary', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        showToast('Término agregado al glosario de IA.', 'success');
+      }
+
+      setShowTermModal(false);
+      setTermEs('');
+      setTermNative('');
+      setEditingTermId(null);
+      fetchDictionaryTerms();
+    } catch (e) {
+      showToast(e.message || 'Error al guardar término.', 'error');
+    }
+  };
+
+  // --- HANDLER DE ELIMINAR TÉRMINO ---
+  const handleDeleteTerm = (id) => {
+    triggerConfirm(
+      'Eliminar Término',
+      '¿Estás seguro de que deseas eliminar este término de traducción del glosario?',
+      async () => {
+        try {
+          await apiRequest(`/api/admin/dictionary/${id}`, { method: 'DELETE' });
+          showToast('Término eliminado del glosario.', 'success');
+          if (dictionaryTerms.length === 1 && dictPage > 1) {
+            setDictPage(p => p - 1);
+          } else {
+            fetchDictionaryTerms();
+          }
+        } catch (e) {
+          showToast(e.message || 'Error al eliminar el término.', 'error');
+        }
+      }
+    );
+  };
+
+  const openAddTermModal = () => {
+    setEditingTermId(null);
+    setTermEs('');
+    setTermNative('');
+    setTermCategory('general');
+    setTermType('palabra');
+    setShowTermModal(true);
+  };
+
+  const openEditTermModal = (term) => {
+    const nativeKey = dictLang === 'quechua' ? 'qu' : 'ay';
+    setEditingTermId(term.id);
+    setTermEs(term.es);
+    setTermNative(term[nativeKey] || '');
+    setTermCategory(term.category);
+    setTermType(term.type);
+    setShowTermModal(true);
   };
 
   // --- HANDLER DE CREAR ADMIN ---
@@ -275,6 +421,22 @@ export default function AdminDashboard({ onLogout, showToast }) {
           }}
         >
           Crear Administradores
+        </button>
+        <button
+          onClick={() => setActiveSubTab('dictionary')}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            borderBottom: activeSubTab === 'dictionary' ? '2.5px solid var(--color-primary)' : '2.5px solid transparent',
+            color: activeSubTab === 'dictionary' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            fontWeight: 600,
+            padding: '0.6rem 1.2rem',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+            transition: 'all 0.2s'
+          }}
+        >
+          Glosario y Diccionario
         </button>
       </div>
 
@@ -661,6 +823,242 @@ export default function AdminDashboard({ onLogout, showToast }) {
         </div>
       )}
 
+      {/* CONTENIDO DE PESTAÑA: GESTIÓN DE DICCIONARIO */}
+      {activeSubTab === 'dictionary' && (
+        <div className="d-flex flex-column gap-3 fadeIn">
+          <div className="row g-3 align-items-center mt-1 mb-2 text-start">
+            {/* Buscador de términos */}
+            <div className="col-md-5">
+              <div className="position-relative">
+                <input
+                  type="text"
+                  className="form-control ps-5"
+                  placeholder="Buscar palabras o categorías..."
+                  value={dictSearch}
+                  onChange={(e) => { setDictSearch(e.target.value); setDictPage(1); }}
+                />
+                <Search size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              </div>
+            </div>
+
+            {/* Selector de idioma y botón Agregar */}
+            <div className="col-md-7 d-flex flex-wrap gap-2 justify-content-md-end justify-content-start">
+              <Button 
+                variant={dictLang === 'quechua' ? 'primary' : 'secondary'}
+                onClick={() => { setDictLang('quechua'); setDictPage(1); }}
+                style={{ padding: '0.45rem 1rem', fontSize: '0.8rem' }}
+              >
+                Quechua
+              </Button>
+              <Button 
+                variant={dictLang === 'aymara' ? 'primary' : 'secondary'}
+                onClick={() => { setDictLang('aymara'); setDictPage(1); }}
+                style={{ padding: '0.45rem 1rem', fontSize: '0.8rem' }}
+              >
+                Aymara
+              </Button>
+              <Button 
+                variant="primary" 
+                onClick={openAddTermModal}
+                style={{ padding: '0.45rem 1rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'var(--color-success)', borderColor: 'var(--color-success)' }}
+              >
+                <PlusCircle size={14} />
+                Nuevo Término
+              </Button>
+            </div>
+          </div>
+
+          {/* Listado de Términos */}
+          <Card title={`Términos Registrados (${dictTotal})`}>
+            {dictLoading ? (
+              <div className="empty-state py-5">
+                <RefreshCw size={36} className="animate-spin text-muted" />
+                <p>Cargando términos del diccionario...</p>
+              </div>
+            ) : dictionaryTerms.length > 0 ? (
+              <>
+                <div className="table-responsive text-start">
+                  <table className="table table-borderless align-middle" style={{ color: 'var(--text-primary)' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                        <th style={{ padding: '0.75rem' }}>ESPAÑOL</th>
+                        <th style={{ padding: '0.75rem' }}>{dictLang === 'quechua' ? 'QUECHUA' : 'AYMARA'}</th>
+                        <th style={{ padding: '0.75rem' }}>CATEGORÍA</th>
+                        <th style={{ padding: '0.75rem' }}>TIPO</th>
+                        <th style={{ padding: '0.75rem', width: '100px' }} className="text-end">ACCIONES</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dictionaryTerms.map((term) => {
+                        const nativeKey = dictLang === 'quechua' ? 'qu' : 'ay';
+                        return (
+                          <tr key={term.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.03)', fontSize: '0.9rem' }}>
+                            <td style={{ padding: '0.75rem', fontWeight: '500' }}>{term.es}</td>
+                            <td style={{ padding: '0.75rem', color: 'var(--color-primary)', fontWeight: '600' }}>{term[nativeKey] || ''}</td>
+                            <td style={{ padding: '0.75rem' }}>
+                              <Badge variant="info" style={{ fontSize: '0.65rem' }}>{term.category}</Badge>
+                            </td>
+                            <td style={{ padding: '0.75rem', textTransform: 'capitalize', color: 'var(--text-secondary)' }}>{term.type}</td>
+                            <td style={{ padding: '0.75rem' }} className="text-end">
+                              <div className="d-flex justify-content-end gap-1">
+                                <Button 
+                                  variant="icon" 
+                                  onClick={() => openEditTermModal(term)}
+                                  style={{ width: '30px', height: '30px' }}
+                                  title="Editar término"
+                                >
+                                  <Edit3 size={14} style={{ color: 'var(--color-primary)' }} />
+                                </Button>
+                                <Button 
+                                  variant="icon" 
+                                  onClick={() => handleDeleteTerm(term.id)}
+                                  style={{ width: '30px', height: '30px' }}
+                                  title="Eliminar término"
+                                >
+                                  <Trash2 size={14} style={{ color: 'var(--color-danger)' }} />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Paginación */}
+                <div className="d-flex justify-content-center align-items-center gap-3 mt-3 pt-3 border-top border-secondary-subtle">
+                  <Button 
+                    variant="secondary"
+                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
+                    onClick={() => setDictPage(p => Math.max(p - 1, 1))}
+                    disabled={dictPage === 1}
+                  >
+                    <ChevronLeft size={12} /> Anterior
+                  </Button>
+                  <span style={{ fontSize: '0.85rem' }}>Página <strong>{dictPage}</strong> de {Math.ceil(dictTotal / dictLimite) || 1}</span>
+                  <Button 
+                    variant="secondary"
+                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
+                    onClick={() => setDictPage(p => p + 1)}
+                    disabled={dictionaryTerms.length < dictLimite}
+                  >
+                    Siguiente <ChevronRight size={12} />
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="empty-state py-5">
+                <AlertCircle size={36} className="text-muted" />
+                <p>No se encontraron términos que coincidan con la búsqueda.</p>
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* MODAL DE AGREGAR/EDITAR TÉRMINO */}
+      {showTermModal && (
+        <div className="modal-overlay d-flex align-items-center justify-content-center position-fixed top-0 start-0 w-100 h-100" style={{ zIndex: 1100, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+          <Card style={{ width: '100%', maxWidth: '450px', padding: '1.75rem' }} className="animate-scaleUp mx-3">
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <h3 className="h5 fw-bold m-0" style={{ color: 'var(--text-primary)' }}>
+                {editingTermId ? 'Editar Término de Glosario' : 'Agregar Término de Glosario'}
+              </h3>
+              <button 
+                onClick={() => setShowTermModal(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)' }}
+              >
+                <PlusCircle size={20} style={{ transform: 'rotate(45deg)' }} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTerm} className="d-flex flex-column gap-3 text-start">
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 600 }}>Término en Español</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  placeholder="Ej. gato" 
+                  value={termEs}
+                  onChange={(e) => setTermEs(e.target.value)}
+                  required 
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 600 }}>
+                  Traducción en {dictLang === 'quechua' ? 'Quechua' : 'Aymara'}
+                </label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  placeholder={dictLang === 'quechua' ? "Ej. misi" : "Ej. phisi"} 
+                  value={termNative}
+                  onChange={(e) => setTermNative(e.target.value)}
+                  required 
+                />
+              </div>
+
+              <div className="row g-3">
+                <div className="col-sm-6">
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 600 }}>Categoría</label>
+                    <select 
+                      className="form-select"
+                      value={termCategory}
+                      onChange={(e) => setTermCategory(e.target.value)}
+                    >
+                      <option value="saludo">Saludos / Cortesías</option>
+                      <option value="número">Números / Cantidades</option>
+                      <option value="familia">Familia / Roles</option>
+                      <option value="naturaleza">Naturaleza / Medio</option>
+                      <option value="cuerpo">Cuerpo Humano</option>
+                      <option value="comida">Comidas / Bebidas</option>
+                      <option value="animal">Animales</option>
+                      <option value="general">Vocabulario General</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="col-sm-6">
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 600 }}>Tipo de Término</label>
+                    <select 
+                      className="form-select"
+                      value={termType}
+                      onChange={(e) => setTermType(e.target.value)}
+                    >
+                      <option value="palabra">Palabra</option>
+                      <option value="frase">Frase</option>
+                      <option value="verbo">Verbo</option>
+                      <option value="adjetivo">Adjetivo</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="d-flex justify-content-end gap-2 mt-2">
+                <Button variant="secondary" onClick={() => setShowTermModal(false)} style={{ minWidth: '100px' }}>
+                  Cancelar
+                </Button>
+                <Button type="submit" variant="primary" style={{ minWidth: '100px' }}>
+                  Guardar
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* MODAL DE ALERTA PERSONALIZADO */}
+      <AlertModal 
+        isOpen={modalState.isOpen}
+        title={modalState.title}
+        message={modalState.message}
+        type="confirm"
+        onConfirm={modalState.onConfirm}
+        onClose={() => setModalState(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

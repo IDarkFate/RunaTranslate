@@ -6,12 +6,33 @@ import {
 import Card from './ui/Card';
 import Badge from './ui/Badge';
 import Button from './ui/Button';
+import AlertModal from './ui/AlertModal';
 
 export default function HistoryList({ showToast }) {
   const [historyData, setHistoryData] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'starred', 'es_qu', 'es_ay'
   
+  // Estado de modal de confirmación
+  const [modalState, setModalState] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
+  const triggerConfirm = (title, message, callback) => {
+    setModalState({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: () => {
+        callback();
+        setModalState(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
+
   // Estados para Paginación de Grandes Datos
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -93,33 +114,37 @@ export default function HistoryList({ showToast }) {
   };
 
   // Eliminar elemento del historial
-  const handleDeleteItem = async (id) => {
-    if (!confirm('¿Estás seguro de que deseas eliminar esta traducción de tu historial?')) return;
-    
-    try {
-      const token = sessionStorage.getItem('tokenUser');
-      const headers = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+  const handleDeleteItem = (id) => {
+    triggerConfirm(
+      'Eliminar Traducción',
+      '¿Estás seguro de que deseas eliminar esta traducción de tu historial?',
+      async () => {
+        try {
+          const token = sessionStorage.getItem('tokenUser');
+          const headers = {};
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
 
-      const res = await fetch(`/api/history/${id}`, {
-        method: 'DELETE',
-        headers: headers
-      });
-      if (res.ok) {
-        showToast('Traducción eliminada del historial.', 'success');
-        // Si eliminamos el último elemento de la página, retroceder una página si es posible
-        if (historyData.length === 1 && currentPage > 1) {
-          setCurrentPage((prev) => prev - 1);
-        } else {
-          loadHistoryData();
+          const res = await fetch(`/api/history/${id}`, {
+            method: 'DELETE',
+            headers: headers
+          });
+          if (res.ok) {
+            showToast('Traducción eliminada del historial.', 'success');
+            // Si eliminamos el último elemento de la página, retroceder una página si es posible
+            if (historyData.length === 1 && currentPage > 1) {
+              setCurrentPage((prev) => prev - 1);
+            } else {
+              loadHistoryData();
+            }
+          }
+        } catch (e) {
+          console.error('Error deleting history item:', e);
+          showToast('No se pudo eliminar el registro.', 'error');
         }
       }
-    } catch (e) {
-      console.error('Error deleting history item:', e);
-      showToast('No se pudo eliminar el registro.', 'error');
-    }
+    );
   };
 
   // Exportar Historial a CSV (Optimizado para Grandes Datos)
@@ -407,6 +432,14 @@ export default function HistoryList({ showToast }) {
           )}
         </div>
       )}
+      <AlertModal 
+        isOpen={modalState.isOpen}
+        title={modalState.title}
+        message={modalState.message}
+        type="confirm"
+        onConfirm={modalState.onConfirm}
+        onClose={() => setModalState(prev => ({ ...prev, isOpen: false }))}
+      />
     </Card>
   );
 }

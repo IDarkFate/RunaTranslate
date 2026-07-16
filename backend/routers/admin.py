@@ -230,3 +230,194 @@ def api_admin_create_new_admin(req: AdminCreateRequest, administrador: str = Dep
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al crear el nuevo administrador: {e}"
         )
+
+# --- 3. CRUD DE TÉRMINOS DEL GLOSARIO/DICCIONARIO ---
+
+class DictionaryTermRequest(BaseModel):
+    es: str = Field(..., description="Término en español")
+    native: str = Field(..., description="Término en lengua nativa (Quechua o Aymara)")
+    category: str = Field("general", description="Categoría gramatical o temática")
+    type: str = Field("palabra", description="Tipo de término (palabra, frase, saludo, etc.)")
+    language: str = Field(..., description="Idioma nativo (quechua o aymara)")
+
+@router.get("/dictionary")
+def api_admin_get_dictionary(
+    search: str = None, 
+    lang: str = None, 
+    limite: int = 50, 
+    salto: int = 0, 
+    administrador: str = Depends(validar_token_acceso)
+):
+    """
+    Recupera los términos del diccionario/glosario con opción de búsqueda y paginación.
+    """
+    try:
+        filtro = {}
+        if lang:
+            filtro["language"] = lang.strip().lower()
+        if search:
+            search_clean = search.strip()
+            # Búsqueda insensible a mayúsculas en español o lengua nativa
+            filtro["$or"] = [
+                {"es": {"$regex": search_clean, "$options": "i"}},
+                {"qu": {"$regex": search_clean, "$options": "i"}},
+                {"ay": {"$regex": search_clean, "$options": "i"}},
+                {"category": {"$regex": search_clean, "$options": "i"}},
+                {"type": {"$regex": search_clean, "$options": "i"}}
+            ]
+            
+        terminos = list(db.base_datos.dictionary.find(filtro).skip(salto).limit(limite))
+        for t in terminos:
+            t["id"] = str(t["_id"])
+            del t["_id"]
+        total = db.base_datos.dictionary.count_documents(filtro)
+        return {"success": True, "total": total, "terms": terminos}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener términos del glosario: {e}"
+        )
+
+@router.post("/dictionary")
+def api_admin_add_dictionary_term(req: DictionaryTermRequest, administrador: str = Depends(validar_token_acceso)):
+    """
+    Agrega un nuevo término al glosario e inicia la recarga en memoria.
+    """
+    try:
+        lang = req.language.strip().lower()
+        if lang not in ["quechua", "aymara"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Idioma no soportado. Debe ser 'quechua' o 'aymara'."
+            )
+            
+        clave_nativa = "qu" if lang == "quechua" else "ay"
+        nuevo_termino = {
+            "es": req.es.strip(),
+            clave_nativa: req.native.strip(),
+            "category": req.category.strip(),
+            "type": req.type.strip(),
+            "language": lang
+        }
+        
+        # Validar duplicados de coincidencia exacta
+        existente = db.base_datos.dictionary.find_one({
+            "es": nuevo_termino["es"],
+            "language": lang
+        })
+        if existente:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El término en español ya tiene una traducción registrada en {lang}."
+            )
+            
+        resultado = db.base_datos.dictionary.insert_one(nuevo_termino)
+        nuevo_termino["id"] = str(resultado.inserted_id)
+        if "_id" in nuevo_termino:
+            del nuevo_termino["_id"]
+            
+        # Recargar diccionarios en el servicio de traducción en tiempo real
+        import services.translation_service as ts
+        ts.cargar_diccionarios_desde_bd()
+        
+        return {"success": True, "message": "Término agregado con éxito.", "term": nuevo_termino}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al agregar término al glosario: {e}"
+        )
+
+@router.put("/dictionary/{term_id}")
+def api_admin_update_dictionary_term(
+    term_id: str, 
+    req: DictionaryTermRequest, 
+    administrador: str = Depends(validar_token_acceso)
+):
+    """
+    Actualiza los datos de un término de traducción por su ID único.
+    """
+    try:
+        if not ObjectId.is_valid(term_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El ID del término proporcionado no es válido."
+            )
+            
+        lang = req.language.strip().lower()
+        if lang not in ["quechua", "aymara"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Idioma no soportado. Debe ser 'quechua' o 'aymara'."
+            )
+            
+        clave_nativa = "qu" if lang == "quechua" else "ay"
+        # Campos de actualización
+        update_fields = {
+            "es": req.es.strip(),
+            clave_nativa: req.native.strip(),
+            "category": req.category.strip(),
+            "type": req.type.strip(),
+            "language": lang
+        }
+        
+        # Si cambia el idioma, aseguramos limpiar la clave del otro idioma
+        otro_nativa = "ay" if lang == "quechua" else "qu"
+        
+        resultado = db.base_datos.dictionary.update_one(
+            {"_id": ObjectId(term_id)},
+            {"$set": update_fields, "$unset": {otro_nativa: ""}}
+        )
+        
+        if resultado.matched_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="El término del glosario no fue encontrado."
+            )
+            
+        # Recargar diccionarios en memoria
+        import services.translation_service as ts
+        ts.cargar_diccionarios_desde_bd()
+        
+        return {"success": True, "message": "Término actualizado exitosamente."}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al actualizar término del glosario: {e}"
+        )
+
+@router.delete("/dictionary/{term_id}")
+def api_admin_delete_dictionary_term(term_id: str, administrador: str = Depends(validar_token_acceso)):
+    """
+    Elimina un término de traducción del glosario.
+    """
+    try:
+        if not ObjectId.is_valid(term_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El ID del término proporcionado no es válido."
+            )
+            
+        resultado = db.base_datos.dictionary.delete_one({"_id": ObjectId(term_id)})
+        
+        if resultado.deleted_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="El término del glosario no fue encontrado."
+            )
+            
+        # Recargar diccionarios en memoria
+        import services.translation_service as ts
+        ts.cargar_diccionarios_desde_bd()
+        
+        return {"success": True, "message": "Término eliminado del glosario con éxito."}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al eliminar término del glosario: {e}"
+        )
