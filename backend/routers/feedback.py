@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from bson import ObjectId
 from models import FeedbackRequest
 import services.translation_service as ts
@@ -12,11 +12,24 @@ router = APIRouter(
 )
 
 @router.post("/feedback")
-def api_post_feedback(req: FeedbackRequest):
+def api_post_feedback(req: FeedbackRequest, request: Request):
     """
     Registra la retroalimentación del usuario sobre una traducción.
     """
     try:
+        # Intentar obtener usuario desde cabecera de autenticación opcional
+        username = None
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            try:
+                import jwt
+                from utils.jwt_helper import LLAVE_SECRETA_JWT, ALGORITMO_FIRMA
+                carga_datos = jwt.decode(token, LLAVE_SECRETA_JWT, algorithms=[ALGORITMO_FIRMA])
+                username = carga_datos.get("sub")
+            except Exception:
+                pass
+
         exito = ts.guardar_feedback(
             calificacion=req.rating,
             texto_origen=req.source_text,
@@ -31,8 +44,21 @@ def api_post_feedback(req: FeedbackRequest):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No se pudo procesar la retroalimentación."
             )
+            
+        # Si el usuario está autenticado, registrar automáticamente la traducción calificada en su historial
+        db_id = None
+        if username:
+            db_id = ts.guardar_traduccion(
+                req.source_text.strip(),
+                req.translated_text.strip(),
+                req.source_lang.strip(),
+                req.target_lang.strip(),
+                username=username
+            )
+
         return {
             "success": True, 
+            "id": db_id,
             "message": "Muchas gracias por tu retroalimentación. Tu sugerencia ayuda a re-entrenar la IA."
         }
     except Exception as e:

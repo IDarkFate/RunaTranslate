@@ -10,6 +10,38 @@ router = APIRouter(
     tags=["Historial"]
 )
 
+from pydantic import BaseModel, Field
+
+class HistoryCreateRequest(BaseModel):
+    source_text: str = Field(..., description="Texto original")
+    translated_text: str = Field(..., description="Texto traducido")
+    source_lang: str = Field(..., description="Idioma de origen")
+    target_lang: str = Field(..., description="Idioma de destino")
+    is_starred: bool = Field(False, description="Marca de favorito")
+
+@router.post("/history")
+def api_add_to_history(req: HistoryCreateRequest, username: str = Depends(validar_token_acceso)):
+    """
+    Agrega una traducción manualmente al historial.
+    """
+    try:
+        db_id = ts.guardar_traduccion(
+            req.source_text.strip(),
+            req.translated_text.strip(),
+            req.source_lang.strip(),
+            req.target_lang.strip(),
+            username=username
+        )
+        if req.is_starred:
+            ts.alternar_favorito(db_id, True)
+            
+        return {"success": True, "id": db_id}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al guardar en el historial: {e}"
+        )
+
 @router.get("/history")
 def api_get_history(
     limite: int = LIMITE_HISTORIAL_DEFECTO, 

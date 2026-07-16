@@ -5,6 +5,7 @@ import {
 import Card from './ui/Card';
 import Button from './ui/Button';
 import Badge from './ui/Badge';
+import AlertModal from './ui/AlertModal';
 
 export default function Translator({ onTranslationSaved, showToast }) {
   const [sourceLang, setSourceLang] = useState('es');
@@ -27,6 +28,12 @@ export default function Translator({ onTranslationSaved, showToast }) {
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [activeSpeechText, setActiveSpeechText] = useState(null);
   const [detectedLanguage, setDetectedLanguage] = useState('');
+
+  // Estado para el modal de error de API de traducción
+  const [errorModal, setErrorModal] = useState({
+    isOpen: false,
+    message: ''
+  });
 
   // Cancelar audio activo si cambia el idioma o el texto
   useEffect(() => {
@@ -199,6 +206,16 @@ export default function Translator({ onTranslationSaved, showToast }) {
       }
       
       const data = await res.json();
+      if (data.engine === "Error de API") {
+        setErrorModal({
+          isOpen: true,
+          message: data.explanation
+        });
+        setTargetText('');
+        setEngineMeta(null);
+        return;
+      }
+
       setTargetText(data.translated_text);
       setTranslationId(data.id);
       
@@ -225,8 +242,12 @@ export default function Translator({ onTranslationSaved, showToast }) {
 
   // Alternar Favorito (Estrella) - OPTIMISTIC UI
   const handleToggleStar = async () => {
-    if (!translationId) return;
-    
+    const token = sessionStorage.getItem('tokenUser');
+    if (!token) {
+      showToast('Inicia sesión para guardar esta traducción en tus favoritos.', 'info');
+      return;
+    }
+
     const estadoPrevio = isStarred;
     const nuevoEstado = !isStarred;
     
@@ -235,18 +256,47 @@ export default function Translator({ onTranslationSaved, showToast }) {
     showToast(nuevoEstado ? 'Añadido a favoritos' : 'Eliminado de favoritos', 'success');
 
     try {
-      const res = await fetch(`/api/history/${translationId}/star`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_starred: nuevoEstado })
-      });
-      
-      if (!res.ok) {
-        // Revertir si la API falla
-        setIsStarred(estadoPrevio);
-        showToast('Error al guardar el favorito en la base de datos.', 'error');
+      const headers = { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      };
+
+      if (!translationId) {
+        // La traducción no se ha guardado en el historial aún. Se crea en este paso.
+        const res = await fetch('/api/history', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({
+            source_text: sourceText,
+            translated_text: targetText,
+            source_lang: detectedLanguage || sourceLang,
+            target_lang: targetLang,
+            is_starred: nuevoEstado
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setTranslationId(data.id);
+          if (onTranslationSaved) onTranslationSaved();
+        } else {
+          setIsStarred(estadoPrevio);
+          showToast('Error al guardar el favorito en el historial.', 'error');
+        }
       } else {
-        if (onTranslationSaved) onTranslationSaved();
+        // Ya existe en el historial, alternar el favorito
+        const res = await fetch(`/api/history/${translationId}/star`, {
+          method: 'PUT',
+          headers: headers,
+          body: JSON.stringify({ is_starred: nuevoEstado })
+        });
+        
+        if (!res.ok) {
+          setIsStarred(estadoPrevio);
+          showToast('Error al actualizar el favorito.', 'error');
+        } else {
+          if (onTranslationSaved) onTranslationSaved();
+        }
       }
     } catch (e) {
       setIsStarred(estadoPrevio);
@@ -258,20 +308,32 @@ export default function Translator({ onTranslationSaved, showToast }) {
   const handleStarRating = async (stars) => {
     setRating(stars);
     try {
+      const token = sessionStorage.getItem('tokenUser');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch('/api/feedback', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({
           rating: stars,
           source_text: sourceText,
           translated_text: targetText,
-          source_lang: sourceLang,
+          source_lang: detectedLanguage || sourceLang,
           target_lang: targetLang
         })
       });
       
       if (res.ok) {
+        const data = await res.json();
+        if (data.id) {
+          setTranslationId(data.id);
+        }
         showToast('¡Gracias por calificar la traducción!', 'success');
+        if (onTranslationSaved) onTranslationSaved();
+
         if (stars <= 3) {
           setCorrectedText(targetText);
           setShowCorrectionModal(true);
@@ -293,14 +355,20 @@ export default function Translator({ onTranslationSaved, showToast }) {
     }
 
     try {
+      const token = sessionStorage.getItem('tokenUser');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch('/api/feedback', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({
           rating: rating,
           source_text: sourceText,
           translated_text: targetText,
-          source_lang: sourceLang,
+          source_lang: detectedLanguage || sourceLang,
           target_lang: targetLang,
           corrected_text: correctedText,
           comments: feedbackComments
@@ -636,6 +704,16 @@ export default function Translator({ onTranslationSaved, showToast }) {
         imprecisiones ocasionales, valoramos enormemente tu paciencia. Tus comentarios y aportes de corrección son el motor principal 
         que nos permite mejorar continuamente la precisión y darte una experiencia de preservación cultural maravillosa.
       </div>
+
+      {/* MODAL DE ERROR DE API DE TRADUCCIÓN */}
+      <AlertModal 
+        isOpen={errorModal.isOpen}
+        title="Problema con el Motor de IA"
+        message={errorModal.message}
+        type="alert"
+        onConfirm={() => setErrorModal(prev => ({ ...prev, isOpen: false }))}
+        onClose={() => setErrorModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

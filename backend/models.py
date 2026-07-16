@@ -30,8 +30,8 @@ class TranslationResponse(BaseModel):
     """
     Representa la respuesta devuelta al cliente tras una traducción exitosa.
     """
-    id: str = Field(
-        ..., 
+    id: Optional[str] = Field(
+        None, 
         description="ID único del documento generado en la colección history de MongoDB"
     )
     original_text: str = Field(

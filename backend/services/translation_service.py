@@ -145,6 +145,14 @@ def traductor_local(texto, idioma_origen, idioma_destino):
             texto_final += pal
             
     if cantidad_coincidencias > 0:
+        # Calcular porcentaje de cobertura de traducción (excluyendo signos de puntuación)
+        palabras_filtradas = [p for p in palabras if re.match(r'\w+', p)]
+        porcentaje_cobertura = (cantidad_coincidencias / len(palabras_filtradas)) if palabras_filtradas else 0.0
+        
+        # Si la frase es larga y la cobertura es menor al 70%, evitar devolver texto mezclado
+        if len(palabras_filtradas) > 2 and porcentaje_cobertura < 0.70:
+            return texto_original, "Palabra o frase no encontrada en el corpus local. Se mantiene original."
+            
         return texto_final.strip(), f"Traducción por diccionario ({cantidad_coincidencias}/{len(palabras)} palabras)."
     else:
         return texto_original, "Palabra o frase no encontrada en el corpus local. Se mantiene original."
@@ -289,7 +297,7 @@ Texto: "{texto}" """
                     }
         except Exception as error:
             print(f"Error en Gemini API Nativa: {error}")
-            return None
+            return {"error": str(error)}
 
     # --- FLUJO OPENAI SDK ---
     try:
@@ -365,7 +373,7 @@ Texto: "{texto}" """
             }
     except Exception as error:
         print(f"Error en OpenAI/Gemini API: {error}")
-        return None
+        return {"error": str(error)}
 
 def traducir_con_ia_auxiliar(texto, idioma_origen, idioma_destino):
     """
@@ -514,6 +522,8 @@ def traducir(texto, idioma_origen, idioma_destino):
         if cliente_openai or USAR_GEMINI_DIRECTO:
             res_ia = traducir_con_openai(texto, "auto", idioma_destino)
             if res_ia:
+                if "error" in res_ia:
+                    return texto, f"Error en API de IA: {res_ia['error']}", "Error de API", "es"
                 es_valida, texto_saneado = validar_y_sanear_traduccion(texto, res_ia["translated_text"])
                 if es_valida:
                     # Guardar en la caché de MongoDB usando el idioma detectado
@@ -548,6 +558,8 @@ def traducir(texto, idioma_origen, idioma_destino):
     if cliente_openai or USAR_GEMINI_DIRECTO:
         res_ia = traducir_con_openai(texto, idioma_origen, idioma_destino)
         if res_ia:
+            if "error" in res_ia:
+                return texto, f"Error en API de IA: {res_ia['error']}", "Error de API", idioma_origen
             es_valida, texto_saneado = validar_y_sanear_traduccion(texto, res_ia["translated_text"])
             if es_valida:
                 cs.guardar_en_cache(texto, idioma_origen, idioma_destino, texto_saneado, "IA Avanzada", res_ia["engine"])

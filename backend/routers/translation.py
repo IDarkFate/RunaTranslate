@@ -68,14 +68,9 @@ def api_translate(req: TranslationRequest, request: Request):
             req.text, req.source_lang, req.target_lang
         )
         
-        # Registrar la traducción en el historial de MongoDB asociado al usuario con el idioma detectado
-        db_id = ts.guardar_traduccion(
-            req.text, texto_traducido, detected_lang, req.target_lang, username=username
-        )
-        
-        # Retornar el esquema estructurado
+        # Retornar el esquema estructurado sin guardar en el historial en este paso (se guarda al calificar o añadir a favoritos)
         return TranslationResponse(
-            id=db_id,
+            id=None,
             original_text=req.text,
             translated_text=texto_traducido,
             source_lang=detected_lang,
