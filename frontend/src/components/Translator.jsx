@@ -699,10 +699,7 @@ export default function Translator({ onTranslationSaved, showToast }) {
       )}
       {/* Mensaje de cortesía y advertencia de IA en la parte inferior */}
       <div className="translator-warning-note">
-        🌱 <strong>Nota del Proyecto:</strong> RunaTranslate es una plataforma viva en fase de aprendizaje inicial. 
-        Debido a que las inteligencias artificiales para lenguas originarias aún están en calibración y pueden presentar 
-        imprecisiones ocasionales, valoramos enormemente tu paciencia. Tus comentarios y aportes de corrección son el motor principal 
-        que nos permite mejorar continuamente la precisión y darte una experiencia de preservación cultural maravillosa.
+        <strong>Nota del Proyecto:</strong> Al ser un sistema en desarrollo bilingüe, las traducciones pueden presentar imprecisiones. Valoramos tu paciencia y aportes para seguir mejorando.
       </div>
 
       {/* MODAL DE ERROR DE API DE TRADUCCIÓN */}
