@@ -137,7 +137,17 @@ def traductor_local(texto, idioma_origen, idioma_destino):
                     encontrado = True
                     break
             else:
-                if normalizar_texto(entrada[clave_nativa]) == palabra_normalizada:
+                raiz_normalizada = normalizar_texto(entrada[clave_nativa])
+                # Prefix matching: si la palabra del texto empieza con la raíz del diccionario, y la raíz mide >= 3 caracteres
+                es_coincidencia = False
+                if len(raiz_normalizada) >= 3:
+                    if palabra_normalizada.startswith(raiz_normalizada):
+                        es_coincidencia = True
+                else:
+                    if raiz_normalizada == palabra_normalizada:
+                        es_coincidencia = True
+
+                if es_coincidencia:
                     traduccion = entrada["es"]
                     if palabra[0].isupper():
                         traduccion = traduccion.capitalize()
@@ -170,6 +180,64 @@ def traductor_local(texto, idioma_origen, idioma_destino):
     else:
         return texto_original, "Palabra o frase no encontrada en el corpus local. Se mantiene original."
 
+def obtener_glosario_anclaje(texto: str, idioma_origen: str, idioma_destino: str) -> str:
+    """
+    Busca términos del diccionario local que aparezcan en el texto de entrada
+    y arma un mini glosario obligatorio para guiar la traducción de la IA.
+    """
+    import re
+    # Determinar qué diccionario usar
+    es_quechua = (idioma_origen == "qu" or idioma_destino == "qu")
+    diccionario_actual = diccionario_quechua if es_quechua else diccionario_aymara
+    clave_nativa = "qu" if es_quechua else "ay"
+    
+    glosario_matches = []
+    texto_norm = normalizar_texto(texto)
+    
+    for entrada in diccionario_actual:
+        term_es = entrada.get("es", "").strip()
+        term_nat = entrada.get(clave_nativa, "").strip()
+        if not term_es or not term_nat:
+            continue
+            
+        term_es_norm = normalizar_texto(term_es)
+        term_nat_norm = normalizar_texto(term_nat)
+        
+        coincide = False
+        if idioma_origen == "es":
+            # Coincidencia de palabra completa en español
+            if re.search(r'\b' + re.escape(term_es_norm) + r'\b', texto_norm):
+                coincide = True
+        elif idioma_origen in ["qu", "ay"]:
+            # Prefix matching para el origen nativo (por sufijos aglutinados)
+            if len(term_nat_norm) >= 3:
+                if re.search(r'\b' + re.escape(term_nat_norm), texto_norm):
+                    coincide = True
+            else:
+                if re.search(r'\b' + re.escape(term_nat_norm) + r'\b', texto_norm):
+                    coincide = True
+        else: # "auto"
+            # Comprobar ambos
+            if re.search(r'\b' + re.escape(term_es_norm) + r'\b', texto_norm):
+                coincide = True
+            elif len(term_nat_norm) >= 3 and re.search(r'\b' + re.escape(term_nat_norm), texto_norm):
+                coincide = True
+            elif len(term_nat_norm) < 3 and re.search(r'\b' + re.escape(term_nat_norm) + r'\b', texto_norm):
+                coincide = True
+                
+        if coincide:
+            if idioma_origen == "es" or (idioma_origen == "auto" and re.search(r'\b' + re.escape(term_es_norm) + r'\b', texto_norm)):
+                glosario_matches.append(f"- '{term_es}' -> '{term_nat}'")
+            else:
+                glosario_matches.append(f"- '{term_nat}' -> '{term_es}'")
+                
+    if glosario_matches:
+        # Evitar sobrecargar el prompt, tomamos máximo 15 términos
+        lista_glosario = "\n".join(glosario_matches[:15])
+        return f"\n\nGLOSARIO OBLIGATORIO DE REFERENCIA (Usa exactamente estas correspondencias si los términos aparecen en el texto):\n{lista_glosario}\n"
+        
+    return ""
+
 def traducir_con_openai(texto, idioma_origen, idioma_destino):
     """
     Realiza la traducción del texto llamando a la API de OpenAI / Gemini.
@@ -184,6 +252,7 @@ def traducir_con_openai(texto, idioma_origen, idioma_destino):
         "ay": "Aymara altiplánico"
     }
     destino_nombre = nombres_idiomas.get(idioma_destino, idioma_destino)
+    glosario_bloque = obtener_glosario_anclaje(texto, idioma_origen, idioma_destino)
 
     if idioma_origen == "auto":
         system_content = f"""Eres un traductor profesional y detector de idiomas especializado en español, quechua y aimara.
@@ -228,6 +297,8 @@ Reglas de Oro de Interpretación y Traducción:
         user_content = f"""Idioma origen: {origen_nombre}
 Idioma destino: {destino_nombre}
 Texto: "{texto}" """
+
+    system_content += glosario_bloque
 
     # --- FLUJO NATIVO GEMINI (DIRECTO POR HTTP) ---
     if USAR_GEMINI_DIRECTO:
@@ -469,7 +540,7 @@ def es_traduccion_truncada(texto_origen: str, texto_traducido: str) -> bool:
     """
 # --- MIDDLEWARE DE VALIDACIÓN Y SANEAMIENTO DE TRADUCCIÓN ---
 
-def validar_y_sanear_traduccion(texto_origen: str, texto_traducido: str) -> tuple[bool, str]:
+def validar_y_sanear_traduccion(texto_origen: str, texto_traducido: str, idioma_destino: str) -> tuple[bool, str]:
     """
     Realiza una validación y saneamiento profundo de la traducción.
     Retorna una tupla (es_valida, texto_saneado).
@@ -517,10 +588,16 @@ def validar_y_sanear_traduccion(texto_origen: str, texto_traducido: str) -> tupl
             print(">>> Middleware de Calidad: Exceso de asteriscos indicativos de lista de vocabulario/pasos.")
             return False, texto_limpio
             
-    # C) Proporción de longitud (Previene truncamientos severos)
-    if len(texto_origen) > 60 and len(texto_limpio) < (len(texto_origen) * 0.15):
-        print(f">>> Middleware de Calidad: Traducción demasiado corta ({len(texto_limpio)} vs {len(texto_origen)} chars). Posible truncamiento.")
-        return False, texto_limpio
+    # C) Proporción de longitud (Previene truncamientos severos basándose en palabras)
+    palabras_origen = len(re.findall(r'\w+', texto_origen))
+    palabras_traducido = len(re.findall(r'\w+', texto_limpio))
+    
+    if palabras_origen > 6:
+        # Piso de longitud laxo (15%) para lenguas nativas por su naturaleza aglutinante, más estricto (35%) para español
+        piso = (palabras_origen * 0.15) if idioma_destino in ["qu", "ay"] else (palabras_origen * 0.35)
+        if palabras_traducido < piso:
+            print(f">>> Middleware de Calidad: Traducción demasiado corta ({palabras_traducido} vs {palabras_origen} palabras). Posible truncamiento.")
+            return False, texto_limpio
         
     return True, texto_limpio
 
@@ -542,7 +619,7 @@ def traducir(texto, idioma_origen, idioma_destino):
             if res_ia:
                 if "error" in res_ia:
                     return texto, f"Error en API de IA: {res_ia['error']}", "Error de API", "es"
-                es_valida, texto_saneado = validar_y_sanear_traduccion(texto, res_ia["translated_text"])
+                es_valida, texto_saneado = validar_y_sanear_traduccion(texto, res_ia["translated_text"], idioma_destino)
                 if es_valida:
                     # Guardar en la caché de MongoDB usando el idioma detectado
                     cs.guardar_en_cache(
@@ -578,7 +655,7 @@ def traducir(texto, idioma_origen, idioma_destino):
         if res_ia:
             if "error" in res_ia:
                 return texto, f"Error en API de IA: {res_ia['error']}", "Error de API", idioma_origen
-            es_valida, texto_saneado = validar_y_sanear_traduccion(texto, res_ia["translated_text"])
+            es_valida, texto_saneado = validar_y_sanear_traduccion(texto, res_ia["translated_text"], idioma_destino)
             if es_valida:
                 cs.guardar_en_cache(texto, idioma_origen, idioma_destino, texto_saneado, "IA Avanzada", res_ia["engine"])
                 return texto_saneado, res_ia["engine"], "IA Avanzada", idioma_origen
@@ -586,7 +663,7 @@ def traducir(texto, idioma_origen, idioma_destino):
     # 2.3. Intentar traducción con IA Auxiliar (MyMemory Neural Translator Fallback)
     texto_traducido, descripcion_motor = traducir_con_ia_auxiliar(texto, idioma_origen, idioma_destino)
     if texto_traducido:
-        es_valida, texto_saneado = validar_y_sanear_traduccion(texto, texto_traducido)
+        es_valida, texto_saneado = validar_y_sanear_traduccion(texto, texto_traducido, idioma_destino)
         if es_valida:
             cs.guardar_en_cache(texto, idioma_origen, idioma_destino, texto_saneado, "IA Auxiliar", descripcion_motor)
             return texto_saneado, descripcion_motor, "IA Auxiliar", idioma_origen
