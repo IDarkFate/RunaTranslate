@@ -19,6 +19,19 @@ if CLAVE_API_OPENAI:
         if CLAVE_API_OPENAI.startswith("AQ.") or CLAVE_API_OPENAI.startswith("AIza"):
             USAR_GEMINI_DIRECTO = True
             print(">>> Servicio de traducción: Motor nativo Gemini configurado (100% compatible con claves AQ).")
+        elif CLAVE_API_OPENAI.startswith("sk-or-"):
+            from openai import OpenAI
+            cliente_openai = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=CLAVE_API_OPENAI,
+                default_headers={
+                    "HTTP-Referer": "https://runatranslate.vercel.app",
+                    "X-Title": "RunaTranslate"
+                }
+            )
+            # Para OpenRouter, usamos el modelo de Google Gemini 2.5 Flash
+            MODELO_IA = "google/gemini-2.5-flash"
+            print(">>> Servicio de traducción: Cliente OpenRouter inicializado (usando google/gemini-2.5-flash).")
         else:
             from openai import OpenAI
             cliente_openai = OpenAI(api_key=CLAVE_API_OPENAI)
