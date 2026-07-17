@@ -183,7 +183,6 @@ def traducir_con_openai(texto, idioma_origen, idioma_destino):
         "qu": "Quechua Collao / Cusco-Collao",
         "ay": "Aymara altiplánico"
     }
-    
     destino_nombre = nombres_idiomas.get(idioma_destino, idioma_destino)
 
     if idioma_origen == "auto":
@@ -193,10 +192,12 @@ Tu tarea consiste en:
 2. Traducir el texto al idioma de destino: {destino_nombre}.
 
 Reglas de traducción:
-- Conserva el significado original.
+- Conserva el significado original de forma exacta sin alterar los conceptos o sujetos principales.
 - No agregues ni elimines información.
-- Evita traducciones literales cuando afecten la naturalidad.
-- Mantén la gramática correcta del idioma de destino (pon especial atención a la gramática y morfología de sufijos del aymara).
+- **Evita la fragmentación y traducción literal de raíces**: Las lenguas nativas andinas son aglutinantes. No deconstruyas palabras compuestas o conceptos específicos para traducirlos por sus raíces literales individuales si juntas representan un sustantivo único (por ejemplo, conserva especies biológicas, nombres de animales, plantas o términos culturales con su significado real y estándar, en lugar de traducirlos literalmente parte por parte).
+- **Traducción sensible al contexto ecológico y natural**: Términos andinos polisémicos (que tienen múltiples significados como espacio, tiempo, tierra, naturaleza o aire) deben interpretarse estrictamente según el contexto global de la frase. Si el texto habla de flora, fauna o seres vivos, traduce dichos términos como "naturaleza", "tierra" o "ecosistema" en lugar de palabras aisladas como "clima" o "aire".
+- **Coherencia bidireccional estricta**: El texto traducido debe mantener la estructura y los agentes/objetos originales de tal manera que si el resultado se traduce de regreso al idioma original, se reconstruyan de forma fiel los mismos sujetos, acciones y objetos iniciales (evitando derivas que alteren o inventen sustantivos abstractos).
+- Mantén la gramática correcta del idioma de destino (pon especial atención a la gramática y morfología de sufijos del aymara y quechua).
 - Conserva nombres propios, números, correos, URLs y fechas.
 - Los términos técnicos que no tengan una traducción ampliamente aceptada deben mantenerse en el idioma original.
 - No escribas explicaciones, comentarios ni notas.
@@ -211,14 +212,16 @@ Texto: "{texto}" """
     else:
         origen_nombre = nombres_idiomas.get(idioma_origen, idioma_origen)
         system_content = f"""Eres un traductor profesional especializado en español, quechua y aimara.
-Tu única tarea es traducir textos de forma fluida, precisa y natural.
+Tu única tarea es traducir textos de forma fluida, precisa, natural y con absoluta fidelidad semántica.
 
-Reglas de Oro:
-1. Conserva el significado original de forma exacta.
+Reglas de Oro de Interpretación y Traducción:
+1. Conserva el significado original de forma exacta sin alterar los conceptos principales.
 2. No agregues explicaciones, comentarios, notas de traducción ni listas de vocabulario.
-3. Evita traducciones literales si afectan la naturalidad del idioma destino.
-4. Aplica correctamente la gramática, morfología y el uso de sufijos nativos (quechua y aimara).
-5. Devuelve ÚNICAMENTE el texto traducido limpio, sin ningún carácter adicional, sin asteriscos, sin pasos intermedios y sin explicaciones."""
+3. **Evita la fragmentación y traducción literal de raíces**: Las lenguas nativas andinas son aglutinantes. No deconstruyas palabras compuestas o conceptos específicos para traducirlos por sus raíces literales individuales si juntas representan un sustantivo único (por ejemplo, conserva especies biológicas, nombres de animales, plantas o términos culturales con su significado real y estándar, en lugar de traducirlos literalmente parte por parte).
+4. **Traducción sensible al contexto ecológico y natural**: Términos andinos polisémicos (que tienen múltiples significados como espacio, tiempo, tierra, naturaleza o aire) deben interpretarse estrictamente según el contexto global de la frase. Si el texto habla de flora, fauna o seres vivos, traduce dichos términos como "naturaleza", "tierra" o "ecosistema" en lugar de palabras aisladas como "clima" o "aire".
+5. **Coherencia bidireccional estricta**: El texto traducido debe mantener la estructura y los agentes/objetos originales de tal manera que si el resultado se traduce de regreso al idioma original, se reconstruyan de forma fiel los mismos sujetos, acciones y objetos iniciales (evitando derivas que alteren o inventen sustantivos abstractos).
+6. Aplica correctamente la gramática, morfología y el uso de sufijos nativos (quechua y aimara).
+7. Devuelve ÚNICAMENTE el texto traducido limpio, sin ningún carácter adicional, sin asteriscos, sin pasos intermedios y sin explicaciones."""
 
         user_content = f"""Idioma origen: {origen_nombre}
 Idioma destino: {destino_nombre}
