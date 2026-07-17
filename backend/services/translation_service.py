@@ -217,7 +217,7 @@ Texto: "{texto}" """
         import urllib.parse
         import json
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={CLAVE_API_OPENAI}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={CLAVE_API_OPENAI}"
         headers = {"Content-Type": "application/json"}
         
         payload = {
@@ -285,7 +285,7 @@ Texto: "{texto}" """
                     return {
                         "translated_text": translated,
                         "detected_lang": detected,
-                        "engine": "Traducción por IA nativa (gemini-2.5-flash)"
+                        "engine": "Traducción por IA nativa (gemini-3.5-flash)"
                     }
                 else:
                     if contenido.startswith('"') and contenido.endswith('"'):
@@ -293,7 +293,7 @@ Texto: "{texto}" """
                     return {
                         "translated_text": contenido.strip(),
                         "detected_lang": idioma_origen,
-                        "engine": "Traducción por IA nativa (gemini-2.5-flash)"
+                        "engine": "Traducción por IA nativa (gemini-3.5-flash)"
                     }
         except Exception as error:
             print(f"Error en Gemini API Nativa: {error}")
