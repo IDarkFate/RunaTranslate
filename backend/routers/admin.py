@@ -421,3 +421,20 @@ def api_admin_delete_dictionary_term(term_id: str, administrador: str = Depends(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al eliminar término del glosario: {e}"
         )
+
+@router.delete("/cache")
+def api_admin_clear_cache(administrador: str = Depends(validar_token_acceso)):
+    """
+    Vacía la colección 'cache' de MongoDB Atlas.
+    """
+    try:
+        resultado = db.base_datos.cache.delete_many({})
+        return {
+            "success": True, 
+            "message": f"Caché de traducción limpiada con éxito. Se eliminaron {resultado.deleted_count} registros."
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al limpiar la caché: {e}"
+        )

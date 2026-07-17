@@ -87,6 +87,9 @@ export default function AdminDashboard({ onLogout, showToast }) {
   const [termCategory, setTermCategory] = useState('general');
   const [termType, setTermType] = useState('palabra');
 
+  // Estado para la limpieza de caché
+  const [clearingCache, setClearingCache] = useState(false);
+
   const fetchAdminData = async () => {
     setLoading(true);
     try {
@@ -148,6 +151,27 @@ export default function AdminDashboard({ onLogout, showToast }) {
     eliminarTokenAdmin();
     showToast('Sesión administrativa cerrada.', 'info');
     onLogout();
+  };
+
+  const handleConfirmClearCache = () => {
+    triggerConfirm(
+      'Limpiar Caché',
+      '¿Estás seguro de que deseas vaciar la caché de traducciones? Esto obligará a la IA a volver a traducir todas las frases la próxima vez que se consulten.',
+      async () => {
+        setClearingCache(true);
+        try {
+          const res = await apiRequest('/api/admin/cache', { method: 'DELETE' });
+          if (res.success) {
+            showToast(res.message, 'success');
+            fetchAdminData();
+          }
+        } catch (e) {
+          showToast(e.message || 'Error al limpiar la caché.', 'error');
+        } finally {
+          setClearingCache(false);
+        }
+      }
+    );
   };
 
   // --- HANDLER DE NUEVA TRIVIA ---
@@ -353,7 +377,17 @@ export default function AdminDashboard({ onLogout, showToast }) {
           </p>
         </div>
         
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <Button 
+            variant="secondary"
+            onClick={handleConfirmClearCache}
+            disabled={clearingCache}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
+            title="Limpiar la caché de traducciones"
+          >
+            <RefreshCw size={14} className={clearingCache ? 'animate-spin' : ''} />
+            Limpiar Caché
+          </Button>
           <Button 
             variant="danger"
             onClick={handleCerrarSesion}
